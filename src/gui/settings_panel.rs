@@ -70,14 +70,25 @@ impl SettingsPanel {
     }
 
     fn install_windows_printer(&self) {
-        // Simplified PowerShell command to avoid syntax errors
+        // Use the built-in "Generic / Text Only" driver: it forwards raw bytes
+        // unchanged to the RAW TCP port, which is what ESC/POS needs. Do NOT pick
+        // a driver by '*Microsoft*' name match — that grabs "Send To Microsoft
+        // OneNote" / "Microsoft Print To PDF", which capture output instead of
+        // sending it to :9100 (or fail to bind a TCP port). $ErrorActionPreference
+        // = 'Stop' + exit 1 makes a real failure surface instead of printing a
+        // bogus success message.
         let output = Command::new("powershell")
             .args([
                 "-Command",
-                "Add-PrinterPort -Name '127.0.0.1:9100' -PrinterHostAddress '127.0.0.1' -PortNumber 9100; \
-                 $driver = (Get-PrinterDriver | Where-Object { $_.Name -like '*Microsoft*' } | Select-Object -First 1).Name; \
-                 Add-Printer -Name 'ESC_POS_Virtual_Printer' -DriverName $driver -PortName '127.0.0.1:9100'; \
-                 Write-Host 'Printer installed successfully'"
+                "$ErrorActionPreference='Stop'; \
+                 try { \
+                   if (-not (Get-PrinterPort -Name '127.0.0.1:9100' -ErrorAction SilentlyContinue)) { \
+                     Add-PrinterPort -Name '127.0.0.1:9100' -PrinterHostAddress '127.0.0.1' -PortNumber 9100 \
+                   } \
+                   Add-PrinterDriver -Name 'Generic / Text Only'; \
+                   Add-Printer -Name 'ESC_POS_Virtual_Printer' -DriverName 'Generic / Text Only' -PortName '127.0.0.1:9100'; \
+                   Write-Host 'Printer installed successfully' \
+                 } catch { Write-Error $_; exit 1 }"
             ])
             .output();
 
