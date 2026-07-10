@@ -33,7 +33,7 @@ raw bytes → EscPosParser → Vec<EscPosCommand> → EmulatorState.process_comm
 - `escpos/parser.rs` — `parse_stream` byte-walks dispatching on `ESC` (0x1B), `GS` (0x1D), `\n`, `\r`, or text runs. **Incremental**: returns `Ok(None)` and breaks when more bytes are needed. Handlers return `(command, bytes_consumed)`.
 - `escpos/printer.rs` — `PrinterState`: live font/justification/emphasis flags + `buffer: Vec<ReceiptLine>` (Text / Bitmap / Separator). `process_command` applies each command.
 - `emulator/mod.rs` — `EmulatorState`: wraps `PrinterState`, keeps bounded `command_history` (`VecDeque`, max 1000).
-- `gui/` — `app.rs` (tab shell), `receipt_viewer.rs` (renders buffer, caches bitmap textures), `command_log.rs`, `settings_panel.rs` (shells out to PowerShell / CUPS to install the OS printer).
+- `gui/` — `app.rs` (tab shell), `receipt_viewer.rs` (renders buffer, caches bitmap textures), `command_log.rs`, `settings_panel.rs` (shells out to PowerShell / CUPS to install the OS printer; also renders the QZ Tray integration snippet picker — `QzMode::DirectSocket` vs `QzMode::OsPrinter`). All three tab views wrap their content in `egui::ScrollArea` — keep that when adding content that can grow past window height.
 
 ### Adding a new ESC/POS command (most common task)
 
@@ -47,9 +47,11 @@ Touch four files in order:
 ## Gotchas
 
 - **Double buffering**: `server.rs` keeps its own `buffer` and `EscPosParser` keeps an internal one. The parser's internal buffer retains unconsumed partial commands across reads. Edit either carefully.
-- Bind address `127.0.0.1:9100` is hardcoded in `server.rs` and referenced in `settings_panel.rs` install commands — change both together.
+- Bind address `127.0.0.1:9100` is hardcoded in `server.rs` and referenced in `settings_panel.rs` install commands and QZ Tray snippets — change all together.
 - `render_receipt`/`bitmap_to_rgb` build full `RgbImage`s, but text is drawn via egui labels; the image path is mostly for bitmaps.
 - Some inline comments are in French.
+- **Windows printer driver**: `install_windows_printer` must use the built-in `'Generic / Text Only'` driver by exact name, not a `*Microsoft*` wildcard match — that grabs "Send To Microsoft OneNote" or "Microsoft Print To PDF", neither of which forwards raw bytes to the TCP port. Also keep `$ErrorActionPreference='Stop'` + `try/catch` + `exit 1` in that script; without it, PowerShell's non-terminating errors let an unconditional `Write-Host 'installed successfully'` run after a real failure, and `output.status.success()` on the Rust side reports a false positive.
+- Building on Windows needs the MSVC linker (`link.exe`) and Windows SDK (for `kernel32.lib`) both present — if `cargo build` fails with an `LNK1181` or a bogus `link.exe` usage error, it's picking up a non-MSVC `link.exe` (coreutils/git-bash) from PATH instead of MSVC's; build from a VS Developer shell (`vcvars64.bat`) or the "x64 Native Tools Command Prompt" to fix.
 
 ## Conventions
 

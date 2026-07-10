@@ -1,14 +1,53 @@
 use crate::emulator::EmulatorState;
-use egui::Ui;
+use egui::{ScrollArea, Ui};
 use std::process::Command;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QzMode {
+    /// qz.configs.create({ host, port }) — QZ Tray opens a TCP socket straight
+    /// to the emulator, no OS printer / driver involved.
+    DirectSocket,
+    /// qz.configs.create('ESC_POS_Virtual_Printer') — QZ Tray prints through
+    /// the OS print queue, which forwards to the emulator via the installed
+    /// Generic/Text-Only driver + RAW TCP port.
+    OsPrinter,
+}
+
+const QZ_SNIPPET_DIRECT: &str = r#"var config = qz.configs.create({ host: '127.0.0.1', port: 9100 });
+
+var data = [
+  { type: 'raw', format: 'command', flavor: 'plain', data: [
+     '\x1B\x40',            // init
+     '\x1B\x61\x31',        // center
+     'Hello World\x0A',
+     '\x1D\x56\x00'         // cut
+  ]}
+];
+
+qz.print(config, data).catch(e => console.error(e));"#;
+
+const QZ_SNIPPET_OS_PRINTER: &str = r#"var config = qz.configs.create('ESC_POS_Virtual_Printer');
+
+var data = [
+  { type: 'raw', format: 'command', flavor: 'plain', data: [
+     '\x1B\x40',            // init
+     '\x1B\x61\x31',        // center
+     'Hello World\x0A',
+     '\x1D\x56\x00'         // cut
+  ]}
+];
+
+qz.print(config, data).catch(e => console.error(e));"#;
+
 pub struct SettingsPanel {
-    // No more useless settings - the emulator works according to ESC/POS standards
+    qz_mode: QzMode,
 }
 
 impl Default for SettingsPanel {
     fn default() -> Self {
-        Self {}
+        Self {
+            qz_mode: QzMode::DirectSocket,
+        }
     }
 }
 
@@ -17,6 +56,12 @@ impl SettingsPanel {
         ui.heading("Emulator Settings");
         ui.separator();
 
+        ScrollArea::vertical().show(ui, |ui| {
+            self.show_content(ui);
+        });
+    }
+
+    fn show_content(&mut self, ui: &mut Ui) {
         // Virtual printer management
         ui.group(|ui| {
             ui.label("Virtual Printer Management");
@@ -54,6 +99,42 @@ impl SettingsPanel {
             
             if ui.button("📡 Test Connection").clicked() {
                 self.test_network_connection();
+            }
+        });
+
+        ui.separator();
+
+        // QZ Tray integration
+        ui.group(|ui| {
+            ui.label("🖨️ QZ Tray Integration");
+            ui.label("Choose how your POS app's QZ Tray client should reach this emulator:");
+
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.qz_mode, QzMode::DirectSocket, "Direct socket (no OS printer)");
+                ui.selectable_value(&mut self.qz_mode, QzMode::OsPrinter, "Via installed OS printer");
+            });
+
+            let snippet = match self.qz_mode {
+                QzMode::DirectSocket => QZ_SNIPPET_DIRECT,
+                QzMode::OsPrinter => QZ_SNIPPET_OS_PRINTER,
+            };
+
+            ui.add_space(4.0);
+            ui.add(egui::TextEdit::multiline(&mut snippet.to_string())
+                .font(egui::TextStyle::Monospace)
+                .desired_width(f32::INFINITY));
+
+            if ui.button("📋 Copy snippet").clicked() {
+                ui.output_mut(|o| o.copied_text = snippet.to_string());
+            }
+
+            match self.qz_mode {
+                QzMode::DirectSocket => {
+                    ui.label("No install step needed — QZ Tray connects straight to 127.0.0.1:9100.");
+                }
+                QzMode::OsPrinter => {
+                    ui.label("Requires 'ESC_POS_Virtual_Printer' to be installed first (see above).");
+                }
             }
         });
 

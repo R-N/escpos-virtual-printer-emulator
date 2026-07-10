@@ -84,6 +84,15 @@ To print from real applications (rather than sending bytes to the socket yoursel
 
 Unrecognized sequences are captured as `Unknown` and listed in the command log.
 
+## QZ Tray integration
+
+The **Settings** tab has a QZ Tray Integration panel with a ready-to-copy JS snippet for either wiring style:
+
+- **Direct socket** — `qz.configs.create({ host: '127.0.0.1', port: 9100 })`. QZ Tray opens a TCP connection straight to the emulator; no OS printer install needed.
+- **Via installed OS printer** — `qz.configs.create('ESC_POS_Virtual_Printer')`. Prints through the OS spooler and the installed printer (see above), matching how a real network receipt printer is normally wired in production.
+
+Toggle between the two in Settings to see the matching snippet and copy it into your POS app.
+
 ## Development
 
 ```bash
